@@ -1,25 +1,25 @@
-# 🖼️ Content-Based Image Retrieval (CBIR)
+# Content-Based Image Retrieval (CBIR)
 
-A minimal implementation of a **Content-Based Image Retrieval (CBIR)** system using:
+A minimal implementation of a Content-Based Image Retrieval (CBIR) system using:
 
-* **Color Histogram** (feature)
-* **Euclidean Distance** (similarity)
-* **Precision@K** (evaluation)
+* Color Histogram (feature)
+* Euclidean Distance (similarity)
+* Precision@K (evaluation)
 
-This is a **baseline version** — designed to be simple, clean, and extensible. The goal is to later generalize the pipeline to support multiple features, distance metrics, and evaluation strategies.
-
----
-
-## 🚀 Current Status
-
-✔ Single feature: Color Histogram
-✔ Single distance metric: Euclidean
-✔ Single evaluation metric: Precision@K
-⚠️ Database is rebuilt on every run (will be optimized later)
+This is a baseline version designed to be simple and extensible. The goal is to later generalize the pipeline to support multiple features, distance metrics, and evaluation strategies.
 
 ---
 
-## 📁 Project Structure
+## Current Status
+
+* Single feature: Color Histogram
+* Single distance metric: Euclidean
+* Single evaluation metric: Precision@K
+* The feature database is rebuilt on every run (to be optimized later)
+
+---
+
+## Project Structure
 
 ```
 cbir/
@@ -38,15 +38,15 @@ cbir/
 
 ---
 
-## 📊 Wang Dataset Overview
+## Wang Dataset Overview
 
-* Total images: **1000**
-* Categories: **10**
-* Images per category: **100**
+* Total images: 1000
+* Categories: 10
+* Images per category: 100
 
-### 🧠 Label Encoding Trick
+### Label Encoding
 
-The dataset does **not provide explicit labels**, but they are encoded in filenames:
+The dataset does not provide explicit labels, but they are encoded in filenames:
 
 ```
 0xx.jpg → Class 0 (Africans)
@@ -56,36 +56,36 @@ The dataset does **not provide explicit labels**, but they are encoded in filena
 9xx.jpg → Class 9 (Food)
 ```
 
-👉 Example:
+Example:
 
 * `100.jpg` → Class 1 (Beaches)
 * `257.jpg` → Class 2 (Buildings)
 
-This is used for evaluation (Precision@K).
+This encoding is used for evaluation with Precision@K.
 
 ---
 
-## 🔍 How It Works
+## How It Works
 
 1. Extract color histogram features for all images
-2. Convert images → feature vectors
-3. Compare query image with database using Euclidean distance
+2. Represent images as feature vectors
+3. Compare the query image with the database using Euclidean distance
 4. Rank images based on similarity
-5. Return top-K results
+5. Return the top-K results
 6. Evaluate using Precision@K
 
 ---
 
-## 🖼️ Visualization
+## Visualization
 
-You can visually inspect retrieval results:
+The system includes a visualization utility to inspect retrieval results:
 
-* Query image is shown alongside top-K retrieved images
-* Helps understand where the model succeeds/fails
+* Displays the query image alongside the top-K retrieved images
+* Helps analyze the strengths and limitations of the current approach
 
 ---
 
-## ▶️ How to Run
+## How to Run
 
 ```bash
 python main.py
@@ -93,9 +93,8 @@ python main.py
 
 ---
 
-## ⚠️ Notes
+## Notes
 
-* Dataset is **not included** in this repo (place manually in `dataset/`)
-* Current model performs **poorly on semantics** (expected with only color features)
-
-
+* The dataset is not included in the repository and must be placed manually in the `dataset/` folder
+* The current implementation relies only on color features and does not capture semantic similarity effectively
+* Performance is expected to improve with the addition of texture features and combined representations
