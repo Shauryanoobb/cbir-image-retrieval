@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+cbir-env/
+venv/
+env/
+
+# Mac
+.DS_Store
+
+# Dataset (VERY IMPORTANT — don't upload 1000 images)
+dataset/
+
+# Jupyter (if you ever use)
+.ipynb_checkpoints/
+
+# Logs
+*.log
