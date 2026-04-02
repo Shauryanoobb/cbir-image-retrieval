@@ -1,14 +1,14 @@
-from feature_extraction import extract_color_histogram, extract_lbp, extract_lbp_fast
+from feature_extraction import extract_color_histogram, extract_lbp, extract_lbp_fast, extract_glcm_features
 from retrieval import build_feature_database, retrieve
 from evaluation import precision_at_k
 from visualize import show_results
 import os
 
 DATASET_PATH = "dataset"
-#FEATURE_EXTRACTOR = extract_color_histogram
-FEATURE_EXTRACTOR = extract_lbp
-#FEATURE_EXTRACTOR = extract_lbp_fast
-
+# FEATURE_EXTRACTOR = extract_color_histogram
+# FEATURE_EXTRACTOR = extract_lbp
+# FEATURE_EXTRACTOR = extract_lbp_fast
+FEATURE_EXTRACTOR = extract_glcm_features
 
 def main():
     print("Building feature database...")

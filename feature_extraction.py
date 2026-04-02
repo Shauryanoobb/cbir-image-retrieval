@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from skimage.feature import local_binary_pattern
+from skimage.feature import local_binary_pattern, graycomatrix, graycoprops
 
 
 def extract_color_histogram(image_path, bins=(8, 8, 8)):
@@ -66,3 +66,33 @@ def extract_lbp_fast(image_path, num_points=24, radius=3):
     hist /= (hist.sum() + 1e-6)
 
     return hist
+
+
+
+# def extract_glcm_features(image_path, distances=[1], angles=[0], levels=256):
+def extract_glcm_features(image_path, distances=[1],angles=[0, np.pi/4, np.pi/2, 3*np.pi/4],levels=256):
+    image = cv2.imread(image_path)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Ensure values are within levels
+    gray = (gray / (256 / levels)).astype(np.uint8)
+
+    glcm = graycomatrix(
+        gray,
+        distances=distances,
+        angles=angles,
+        levels=levels,
+        symmetric=True,
+        normed=True
+    )
+
+    features = []
+
+    # Extract standard properties
+    props = ['contrast', 'dissimilarity', 'homogeneity', 'energy', 'correlation']
+
+    for prop in props:
+        val = graycoprops(glcm, prop)
+        features.extend(val.flatten())
+
+    return np.array(features)
