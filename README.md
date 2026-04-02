@@ -12,7 +12,7 @@ This is a baseline version designed to be simple and extensible. The goal is to 
 
 ## Current Status
 
-* Single feature: Color Histogram
+* Features: Color Histogram, LBP, GLCM. But only one at a time
 * Single distance metric: Euclidean
 * Single evaluation metric: Precision@K
 * The feature database is rebuilt on every run (to be optimized later)
