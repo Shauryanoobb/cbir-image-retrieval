@@ -1,5 +1,6 @@
 def get_class(filename):
-    return filename[0]  # first digit
+    image_number = int(filename.split(".")[0])
+    return image_number // 100
 
 
 def precision_at_k(results, query_image, k):

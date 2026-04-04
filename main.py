@@ -1,4 +1,10 @@
 from feature_extraction import extract_color_histogram, extract_lbp, extract_lbp_fast, extract_glcm_features
+from combined_feature_extraction import (
+    extract_color_histogram_glcm_features,
+    extract_color_histogram_lbp_fast,
+    extract_color_histogram_lbp_fast_glcm_features,
+    extract_lbp_fast_glcm_features,
+)
 from retrieval import build_feature_database, retrieve
 from evaluation import precision_at_k
 from visualize import show_results
@@ -10,7 +16,12 @@ DATASET_PATH = "dataset"
 # FEATURE_EXTRACTOR = extract_color_histogram
 # FEATURE_EXTRACTOR = extract_lbp
 # FEATURE_EXTRACTOR = extract_lbp_fast
-FEATURE_EXTRACTOR = extract_glcm_features
+# FEATURE_EXTRACTOR = extract_glcm_features
+# FEATURE_EXTRACTOR = extract_color_histogram_lbp_fast #0.8
+# FEATURE_EXTRACTOR = extract_color_histogram_glcm_features
+# FEATURE_EXTRACTOR = extract_lbp_fast_glcm_features
+FEATURE_EXTRACTOR = extract_color_histogram_lbp_fast_glcm_features #0.4
+
 
 FEATURE_FILE = f"feature_files/features_{FEATURE_EXTRACTOR.__name__}.pkl"
 
@@ -28,7 +39,7 @@ def main():
         print("Loading precomputed features...")
         feature_db = load_feature_db(FEATURE_FILE)
 
-    query_image = "10.jpg"
+    query_image = "789.jpg"
     query_path = os.path.join(DATASET_PATH, query_image)
 
     results = retrieve(query_path, feature_db, FEATURE_EXTRACTOR, top_k=10)
