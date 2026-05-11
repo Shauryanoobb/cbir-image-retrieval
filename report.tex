@@ -1,0 +1,483 @@
+\documentclass[12pt, a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{setspace}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{cite}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    citecolor=green!50!black,
+    urlcolor=blue!70!black,
+}
+
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small CS220: Computer Vision Project Report}
+\lhead{\small Image Retrieval Using Color and Texture Features}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\setlength{\parskip}{6pt}
+\onehalfspacing
+
+\begin{document}
+
+% ─── Title ───────────────────────────────────────────────────────────────────
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    {\LARGE \textbf{Image Retrieval Using Color and Texture Features}}\\[1em]
+    {\large A Content-Based Image Retrieval System}\\[2.5em]
+
+    {\normalsize
+        Atharva Nanoti (220001013) \quad
+        Shaurya Khetarpal (220001074) \quad
+        Saket Meshram (220001066)
+    }\\[0.5em]
+    {\small Indian Institute of Technology Indore}\\[2em]
+    {\small \today}\\[2em]
+
+    \begin{abstract}
+        \noindent
+        This report presents the design and evaluation of a Content-Based Image Retrieval
+        (CBIR) system that retrieves visually similar images purely from their pixel-level
+        content. Three categories of hand-crafted visual descriptors are implemented: a
+        3-channel color histogram, an optimized Local Binary Pattern (LBP) descriptor, and
+        statistical features derived from the Gray-Level Co-occurrence Matrix (GLCM).
+        All combinations of these descriptors are also evaluated as fused feature vectors.
+        Retrieval performance is measured via Precision@$K$ ($K \in \{1,5,10,20\}$) on the
+        Wang dataset (1\,000 images, 10 classes), using every image as a query in a
+        leave-one-out protocol. Results show that fusing all three descriptors achieves
+        the best global Precision@10 of \textbf{0.6699}, a 7.9\% relative improvement
+        over the color histogram alone, while also outperforming every single-descriptor
+        baseline.
+    \end{abstract}
+\end{titlepage}
+
+% ─── 1. Introduction ─────────────────────────────────────────────────────────
+\section{Introduction}
+
+The exponential growth of digital image collections—spanning medical imaging, satellite
+photography, social media archives, and e-commerce catalogues—has made efficient and
+semantically meaningful image search a central problem in computer vision. Traditional
+keyword-based retrieval relies on manual annotation, which does not scale and is inherently
+subjective. Content-Based Image Retrieval (CBIR) addresses this limitation by describing and
+indexing images directly from their visual content, enabling similarity search without any
+human-supplied labels \cite{smeulders2000}.
+
+In a CBIR pipeline, each image is mapped to a compact numerical feature vector. A query
+image is then processed by the same feature extractor, and database images are ranked by
+the distance between their feature vectors and the query vector. The quality of retrieval is
+therefore determined primarily by the expressiveness and discriminability of the chosen
+feature representation.
+
+Classical hand-crafted descriptors based on color and texture remain widely used in retrieval
+benchmarks because they are computationally lightweight, interpretable, and do not require
+labelled training data \cite{rui1999}. Color histograms capture the global hue composition of an
+image \cite{swain1991}. Local Binary Patterns (LBP) encode micro-texture by recording
+binarized pixel-neighborhood relationships \cite{ojala2002}. Gray-Level Co-occurrence
+Matrix (GLCM) features capture higher-order statistical co-occurrence structure that is
+orthogonal to both color and micro-texture \cite{haralick1973}.
+
+This project builds and evaluates a complete CBIR system using these three descriptor
+families, individually and in all pairwise and triple combinations, on the standard Wang
+benchmark dataset. The key contributions are:
+
+\begin{itemize}[noitemsep]
+    \item A modular, fully cached retrieval pipeline supporting seven distinct feature extractors.
+    \item A comprehensive leave-one-out evaluation over all 1\,000 images, reporting
+          Precision@$K$ globally and per semantic class.
+    \item A systematic comparison revealing the complementarity of color and texture
+          information for image retrieval.
+\end{itemize}
+
+% ─── 2. Problem Statement ────────────────────────────────────────────────────
+\section{Problem Statement}
+
+Given a database $\mathcal{D} = \{I_1, I_2, \ldots, I_N\}$ of $N = 1\,000$ images and a
+query image $I_q \in \mathcal{D}$, the goal is to return the $K$ most visually similar images
+from $\mathcal{D} \setminus \{I_q\}$ such that images from the same semantic category as
+$I_q$ rank as high as possible.
+
+Formally, each image $I_i$ is mapped to a feature vector $\mathbf{f}_i \in \mathbb{R}^d$
+by a feature extractor $\phi: \mathcal{I} \rightarrow \mathbb{R}^d$. Retrieval is performed
+by ranking all database images by a distance function $\delta(\mathbf{f}_q, \mathbf{f}_i)$ in
+ascending order, and returning the top-$K$ results $\mathcal{R}_K(I_q)$.
+
+Performance is quantified by Precision@$K$:
+\begin{equation}
+    \text{P@}K(I_q) = \frac{1}{K} \sum_{I_i \in \mathcal{R}_K(I_q)}
+                      \mathbf{1}\bigl[\text{class}(I_i) = \text{class}(I_q)\bigr]
+\end{equation}
+where $\mathbf{1}[\cdot]$ is the indicator function and class labels are derived from
+filenames (images $\{100i,\ldots,100(i+1)-1\}.jpg$ belong to class $i$).
+
+The core challenge is to identify which feature representation $\phi$ maximises retrieval
+precision across diverse visual categories using only unsupervised, pixel-level descriptors
+and a fixed Euclidean distance metric.
+
+% ─── 3. Approach / Method ───────────────────────────────────────────────────
+\section{Approach and Method}
+
+\subsection{System Pipeline}
+
+The retrieval system follows a six-stage pipeline:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Preprocessing.} Images are read in BGR format via OpenCV and converted
+          to RGB (for color features) or grayscale (for texture features) as required.
+    \item \textbf{Feature extraction.} Each image is mapped to a fixed-length feature vector
+          by one of the seven extractors described in Section~\ref{sec:extractors}.
+    \item \textbf{Database construction.} Feature vectors for all $N$ images are computed
+          once and persisted as Python pickle files to avoid redundant computation on
+          subsequent runs.
+    \item \textbf{Query processing.} A query image's feature vector is computed on the fly
+          using the same extractor.
+    \item \textbf{Similarity ranking.} Euclidean distance between the query vector and every
+          database vector is computed, and images are ranked in ascending order of distance.
+    \item \textbf{Evaluation.} The top-$K$ returned images (excluding the query itself) are
+          compared against the ground-truth class label of the query to compute Precision@$K$.
+\end{enumerate}
+
+\subsection{Feature Extractors}
+\label{sec:extractors}
+
+\subsubsection{Color Histogram (CH)}
+
+The color histogram represents the global color distribution of an image. The image is
+converted to RGB and a joint 3-channel histogram is computed with $8 \times 8 \times 8$
+bins spanning $[0, 255]$ in each channel. The resulting histogram is $\ell^2$-normalized and
+flattened to produce a 512-dimensional feature vector.
+
+\begin{equation}
+    \mathbf{f}_{\text{CH}} = \text{normalize}\Bigl(
+        \text{hist}_{8,8,8}(I_R, I_G, I_B)
+    \Bigr) \in \mathbb{R}^{512}
+\end{equation}
+
+Color histograms are invariant to spatial rearrangements of pixels and robust to small
+geometric distortions, making them effective for categories with distinctive palettes (e.g.
+flowers, dinosaurs) but weaker for categories sharing similar color ranges (e.g. beaches and
+mountains).
+
+\subsubsection{Local Binary Patterns -- Fast (LBP)}
+
+Local Binary Patterns encode the local texture of an image by comparing each pixel's
+intensity with its circularly sampled neighbors \cite{ojala2002}. We use the \emph{uniform}
+LBP variant from \texttt{scikit-image}, with $P = 24$ sampling points and radius $R = 3$.
+Uniform patterns (at most two 0--1 transitions) are assigned individual bins; all
+non-uniform patterns are grouped into a single bin, yielding $P + 2 = 26$ bins. The
+resulting histogram is $\ell^1$-normalized.
+
+\begin{equation}
+    \text{LBP}_{P,R}(x, y) =
+    \sum_{p=0}^{P-1} s\bigl(g_p - g_c\bigr)\,2^p, \quad
+    s(u) = \begin{cases} 1 & u \geq 0 \\ 0 & u < 0 \end{cases}
+\end{equation}
+
+where $g_c$ is the gray value of the center pixel and $g_p$ are the $P$ equally-spaced
+neighbor values on a circle of radius $R$. This yields a 26-dimensional texture descriptor.
+
+\subsubsection{Gray-Level Co-occurrence Matrix Features (GLCM)}
+
+The GLCM captures second-order texture statistics by recording co-occurrence frequencies
+of pixel-intensity pairs at a given spatial offset \cite{haralick1973}. We compute the GLCM
+at four angular directions ($0°, 45°, 90°, 135°$) with a single pixel distance, using
+256 gray levels and symmetric, normalized co-occurrence matrices. Five Haralick statistics
+are extracted from each directional matrix:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Contrast}: $\sum_{i,j} (i-j)^2\, p_{ij}$
+    \item \textbf{Dissimilarity}: $\sum_{i,j} |i-j|\, p_{ij}$
+    \item \textbf{Homogeneity}: $\sum_{i,j} p_{ij} / (1 + (i-j)^2)$
+    \item \textbf{Energy}: $\sqrt{\sum_{i,j} p_{ij}^2}$
+    \item \textbf{Correlation}: $\sum_{i,j} \dfrac{(i-\mu_i)(j-\mu_j)\,p_{ij}}{\sigma_i\sigma_j}$
+\end{itemize}
+
+With 5 statistics across 4 angles, the GLCM descriptor is a 20-dimensional vector.
+
+\subsubsection{Combined Feature Representations}
+
+To exploit the complementarity of color and texture, all combinations of the three base
+descriptors are also evaluated. Before concatenation each individual descriptor is
+$\ell^2$-normalized to unit length so that no descriptor dominates due to scale differences.
+The four combined extractors and their dimensionalities are:
+
+\begin{table}[h]
+    \centering
+    \caption{Combined feature extractors and their dimensionalities.}
+    \label{tab:dims}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        \textbf{Extractor} & \textbf{Components} & \textbf{Dimension} \\
+        \midrule
+        CH + LBP            & 512 + 26          & 538  \\
+        CH + GLCM           & 512 + 20          & 532  \\
+        LBP + GLCM          & 26 + 20           & 46   \\
+        CH + LBP + GLCM     & 512 + 26 + 20     & 558  \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Similarity Measure}
+
+Retrieval is performed using the \textbf{Euclidean distance} between feature vectors:
+
+\begin{equation}
+    \delta(\mathbf{f}_q, \mathbf{f}_i) = \|\mathbf{f}_q - \mathbf{f}_i\|_2
+    = \sqrt{\sum_{k=1}^{d} (f_{q,k} - f_{i,k})^2}
+\end{equation}
+
+All database images are ranked by this distance in ascending order, and the query image
+itself (which achieves distance zero when it appears in the database) is excluded from the
+returned results before precision is computed.
+
+\subsection{Evaluation Protocol}
+
+Performance is measured using a \textbf{leave-one-out} protocol: each of the 1\,000 images
+in the Wang dataset is used as a query in turn. For each query, the top-$K$ retrieved images
+(with the query excluded) are compared against the query's ground-truth class label.
+
+Precision@$K$ is computed for $K \in \{1, 5, 10, 20\}$ and reported in two ways:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Global}: macro-average over all 1\,000 queries.
+    \item \textbf{Per-class}: macro-average over the 100 queries belonging to each class.
+\end{itemize}
+
+% ─── 4. Results and Analysis ─────────────────────────────────────────────────
+\section{Results and Analysis}
+
+\subsection{Global Precision@K}
+
+Table~\ref{tab:global} reports the global Precision@$K$ for all seven feature extractors,
+averaged over all 1\,000 queries. Several clear trends emerge.
+
+\begin{table}[h]
+    \centering
+    \caption{Global Precision@$K$ averaged over all 1\,000 queries on the Wang dataset.
+             Best values in each column are \textbf{bold}.}
+    \label{tab:global}
+    \setlength{\tabcolsep}{8pt}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \textbf{Feature Extractor} & \textbf{P@1} & \textbf{P@5} & \textbf{P@10} & \textbf{P@20} \\
+        \midrule
+        \multicolumn{5}{@{}l}{\textit{Individual descriptors}} \\
+        Color Histogram (CH)      & 0.7180 & 0.6668 & 0.6210 & 0.5693 \\
+        LBP Fast                  & 0.5650 & 0.5150 & 0.4893 & 0.4409 \\
+        GLCM Features             & 0.4130 & 0.3594 & 0.3339 & 0.3080 \\
+        \midrule
+        \multicolumn{5}{@{}l}{\textit{Combined descriptors}} \\
+        CH + LBP                  & 0.7610 & 0.7058 & 0.6629 & 0.6134 \\
+        CH + GLCM                 & 0.7290 & 0.6730 & 0.6287 & 0.5781 \\
+        LBP + GLCM                & 0.6040 & 0.5390 & 0.5044 & 0.4677 \\
+        \textbf{CH + LBP + GLCM} & \textbf{0.7660} & \textbf{0.7120} & \textbf{0.6699} & \textbf{0.6172} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Color dominates texture.} Among individual descriptors, the color histogram achieves
+the highest retrieval precision across all values of $K$ (P@10 = 0.6210), substantially
+outperforming both LBP (P@10 = 0.4893) and GLCM (P@10 = 0.3339). This is consistent
+with the nature of the Wang dataset, where many categories (flowers, dinosaurs, horses,
+beaches) are visually distinguishable by their dominant color distributions.
+
+\textbf{GLCM is the weakest individual descriptor.} Despite capturing second-order spatial
+texture structure, GLCM features alone yield the lowest precision. This is partly because a
+20-dimensional vector carries limited discriminative capacity for a 10-class dataset, and
+because structural texture alone is insufficient to distinguish categories with similar gray-level
+co-occurrence patterns (e.g. buildings and mountains).
+
+\textbf{Feature fusion consistently improves retrieval.} Every combined extractor outperforms
+its constituent individual descriptors. Combining CH with LBP yields a relative improvement of
++6.7\% over CH alone at P@10 (0.6629 vs 0.6210). Adding GLCM on top further raises
+precision to 0.6699. This demonstrates that color and texture information are complementary:
+texture features help distinguish categories that share similar color distributions.
+
+\textbf{The full combination CH + LBP + GLCM is the best extractor overall}, achieving the
+highest precision at every $K$ value. The gain is consistent but modest beyond K=10,
+suggesting that at larger retrieval depths the additional discriminability from texture
+descriptors is partially offset by harder-to-rank within-class variation.
+
+\subsection{Per-Class Precision@10}
+
+Table~\ref{tab:perclass} reports Precision@10 broken down by semantic class for all seven
+extractors. This reveals important class-specific patterns.
+
+\begin{table}[h]
+    \centering
+    \caption{Per-class Precision@10 for all extractors. Classes sorted by difficulty.}
+    \label{tab:perclass}
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{@{}lccccccc@{}}
+        \toprule
+        \textbf{Class} &
+        \textbf{CH} &
+        \textbf{LBP} &
+        \textbf{GLCM} &
+        \textbf{CH+LBP} &
+        \textbf{CH+GLCM} &
+        \textbf{LBP+GLCM} &
+        \textbf{CH+LBP+GLCM} \\
+        \midrule
+        Dinosaurs    & 0.987 & 0.921 & 0.363 & 0.987 & 0.987 & 0.919 & 0.987 \\
+        Horses       & 0.925 & 0.642 & 0.338 & 0.941 & 0.928 & 0.643 & 0.944 \\
+        Flowers      & 0.650 & 0.745 & 0.805 & 0.832 & 0.689 & 0.709 & 0.834 \\
+        Africans     & 0.713 & 0.412 & 0.183 & 0.736 & 0.718 & 0.386 & 0.738 \\
+        Food         & 0.604 & 0.360 & 0.235 & 0.635 & 0.606 & 0.352 & 0.650 \\
+        Buses        & 0.533 & 0.785 & 0.592 & 0.654 & 0.557 & 0.760 & 0.672 \\
+        Elephants    & 0.610 & 0.291 & 0.226 & 0.626 & 0.615 & 0.370 & 0.636 \\
+        Buildings    & 0.465 & 0.267 & 0.231 & 0.486 & 0.460 & 0.349 & 0.498 \\
+        Mountains    & 0.359 & 0.225 & 0.160 & 0.367 & 0.355 & 0.252 & 0.361 \\
+        Beaches      & 0.364 & 0.245 & 0.206 & 0.365 & 0.372 & 0.304 & 0.379 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Dinosaurs are the easiest class.} All color-based methods achieve P@10 $\approx$
+0.987, near-perfect retrieval. Dinosaur images share a highly distinctive combination of
+green/grey coloration against uniform backgrounds, making them separable by color histogram
+alone. Notably, GLCM performs poorly here (0.363), indicating that texture alone is
+insufficient when images have globally similar texture statistics across different classes.
+
+\textbf{Horses are the second easiest.} Color-combination methods exceed 0.94 at P@10.
+The brown/chestnut tones of horse bodies combined with grass-green backgrounds create a
+strong color signature.
+
+\textbf{Flowers are the one class where GLCM excels.} GLCM achieves P@10 = 0.805 for
+flowers, the highest GLCM score across all classes and competitive with LBP (0.745). This
+is because flower petals produce distinctive high-contrast, regular co-occurrence patterns
+that GLCM captures effectively. It is also the only class where GLCM outperforms the color
+histogram (CH P@10 = 0.650).
+
+\textbf{Buses benefit most from LBP.} LBP achieves 0.785 for buses, the highest single-
+descriptor score for this class and surpassing the color histogram (0.533). The strong
+rectangular structural patterns of bus bodies and windows produce discriminative LBP histograms.
+
+\textbf{Mountains and Beaches are the hardest classes} across all extractors. Mountains
+are frequently confused with beaches due to overlapping blue-sky and grey-brown color
+distributions. Neither texture descriptor helps significantly: even the best extractor
+achieves only P@10 = 0.379 for beaches and 0.367 for mountains. This limitation is
+inherent to global feature representations that lack spatial context.
+
+\subsection{Effect of $K$ on Precision}
+
+Across all extractors and classes, Precision@$K$ decreases monotonically as $K$ increases.
+This is expected: as more results are retrieved, the fraction of relevant images in the
+returned set naturally falls because each class contains only 99 same-class images to
+retrieve. The relative ordering of extractors is stable across all $K$ values, confirming
+that the conclusions drawn at P@10 generalise to other retrieval depths.
+
+% ─── 5. Future Scope ────────────────────────────────────────────────────────
+\section{Future Scope of the Work}
+
+The current system establishes a strong classical baseline but has several avenues for
+improvement:
+
+\textbf{Deep feature representations.} Convolutional neural network features (e.g. ResNet,
+VGG activations) have consistently outperformed hand-crafted descriptors on image retrieval
+benchmarks \cite{babenko2014}. Replacing or augmenting the hand-crafted vectors with
+deep features extracted from a pre-trained backbone would likely yield large improvements
+particularly for visually ambiguous classes such as beaches and mountains.
+
+\textbf{Alternative distance metrics.} Only Euclidean distance is used in the current
+implementation. Exploring Chi-squared distance (well-suited to histograms), cosine similarity,
+or learned metric embeddings could improve retrieval precision without changing the feature
+representations.
+
+\textbf{Spatial pyramid features.} The current descriptors are computed globally over the
+entire image, discarding spatial structure. Spatial pyramid matching \cite{lazebnik2006}
+divides images into progressively finer grids and pools descriptors at each level, encoding
+spatial layout while retaining some degree of invariance.
+
+\textbf{Relevance feedback.} Interactive retrieval systems allow users to mark retrieved
+images as relevant or irrelevant. This feedback can be used to re-weight or shift the query
+vector towards the relevant image region in feature space, progressively improving results
+without retraining.
+
+\textbf{Approximate nearest neighbour search.} The current retrieval scans all $N$ feature
+vectors exhaustively, giving $O(Nd)$ query time. For large-scale databases, locality-sensitive
+hashing (LSH) or product quantization can reduce query time to near $O(\log N)$ with minimal
+precision loss.
+
+\textbf{Recall and mean Average Precision.} The current evaluation uses only Precision@$K$.
+Reporting mean Average Precision (mAP) and recall curves would give a more complete picture
+of the precision-recall trade-off across all retrieval depths.
+
+% ─── 6. References ──────────────────────────────────────────────────────────
+\section*{References}
+\addcontentsline{toc}{section}{References}
+
+\begin{thebibliography}{9}
+
+\bibitem{smeulders2000}
+A.~W.~M.~Smeulders, M.~Worring, S.~Santini, A.~Gupta, and R.~Jain,
+``Content-based image retrieval at the end of the early years,''
+\textit{IEEE Transactions on Pattern Analysis and Machine Intelligence},
+vol.~22, no.~12, pp.~1349--1380, Dec.~2000.
+
+\bibitem{rui1999}
+Y.~Rui, T.~S.~Huang, and S.-F.~Chang,
+``Image retrieval: Current techniques, promising directions, and open issues,''
+\textit{Journal of Visual Communication and Image Representation},
+vol.~10, no.~1, pp.~39--62, Mar.~1999.
+
+\bibitem{swain1991}
+M.~J.~Swain and D.~H.~Ballard,
+``Color indexing,''
+\textit{International Journal of Computer Vision},
+vol.~7, no.~1, pp.~11--32, Nov.~1991.
+
+\bibitem{ojala2002}
+T.~Ojala, M.~Pietik\"{a}inen, and T.~M\"{a}enp\"{a}\"{a},
+``Multiresolution gray-scale and rotation invariant texture classification
+with local binary patterns,''
+\textit{IEEE Transactions on Pattern Analysis and Machine Intelligence},
+vol.~24, no.~7, pp.~971--987, Jul.~2002.
+
+\bibitem{haralick1973}
+R.~M.~Haralick, K.~Shanmugam, and I.~Dinstein,
+``Textural features for image classification,''
+\textit{IEEE Transactions on Systems, Man, and Cybernetics},
+vol.~3, no.~6, pp.~610--621, Nov.~1973.
+
+\bibitem{wang2001}
+J.~Li and J.~Z.~Wang,
+``Automatic linguistic indexing of pictures by a statistical modeling approach,''
+\textit{IEEE Transactions on Pattern Analysis and Machine Intelligence},
+vol.~25, no.~9, pp.~1075--1088, Sep.~2003.
+
+\bibitem{babenko2014}
+A.~Babenko, A.~Slesarev, A.~Chigorin, and V.~Lempitsky,
+``Neural codes for image retrieval,''
+in \textit{Proc.\ European Conference on Computer Vision (ECCV)},
+pp.~584--599, 2014.
+
+\bibitem{lazebnik2006}
+S.~Lazebnik, C.~Schmid, and J.~Ponce,
+``Beyond bags of features: Spatial pyramid matching for recognizing natural scene categories,''
+in \textit{Proc.\ IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+pp.~2169--2178, 2006.
+
+\end{thebibliography}
+
+\end{document}
