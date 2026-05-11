@@ -14,13 +14,13 @@ def build_feature_database(dataset_path, feature_extractor):
     return features
 
 
-def retrieve(query_path, feature_db, feature_extractor, top_k=10):
+def retrieve(query_path, feature_db, feature_extractor, top_k=10, distance_fn=euclidean_distance):
     query_feature = feature_extractor(query_path)
 
     distances = []
 
     for filename, feature in feature_db.items():
-        dist = euclidean_distance(query_feature, feature)
+        dist = distance_fn(query_feature, feature)
         distances.append((filename, dist))
 
     distances.sort(key=lambda x: x[1])

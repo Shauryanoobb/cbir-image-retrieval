@@ -64,7 +64,7 @@
         statistical features derived from the Gray-Level Co-occurrence Matrix (GLCM).
         All combinations of these descriptors are also evaluated as fused feature vectors.
         Retrieval performance is measured via Precision@$K$ ($K \in \{1,5,10,20\}$) on the
-        Wang dataset (1\,000 images, 10 classes), using every image as a query in a
+        Wang dataset (1000 images, 10 classes), using every image as a query in a
         leave-one-out protocol. Results show that fusing all three descriptors achieves
         the best global Precision@10 of \textbf{0.6699}, a 7.9\% relative improvement
         over the color histogram alone, while also outperforming every single-descriptor
@@ -75,8 +75,8 @@
 % ─── 1. Introduction ─────────────────────────────────────────────────────────
 \section{Introduction}
 
-The exponential growth of digital image collections—spanning medical imaging, satellite
-photography, social media archives, and e-commerce catalogues—has made efficient and
+The exponential growth of digital image collections, spanning medical imaging, satellite
+photography, social media archives, and e-commerce catalogues has made efficient and
 semantically meaningful image search a central problem in computer vision. Traditional
 keyword-based retrieval relies on manual annotation, which does not scale and is inherently
 subjective. Content-Based Image Retrieval (CBIR) addresses this limitation by describing and
@@ -103,7 +103,7 @@ benchmark dataset. The key contributions are:
 
 \begin{itemize}[noitemsep]
     \item A modular, fully cached retrieval pipeline supporting seven distinct feature extractors.
-    \item A comprehensive leave-one-out evaluation over all 1\,000 images, reporting
+    \item A comprehensive leave-one-out evaluation over all 1000 images, reporting
           Precision@$K$ globally and per semantic class.
     \item A systematic comparison revealing the complementarity of color and texture
           information for image retrieval.
@@ -112,7 +112,7 @@ benchmark dataset. The key contributions are:
 % ─── 2. Problem Statement ────────────────────────────────────────────────────
 \section{Problem Statement}
 
-Given a database $\mathcal{D} = \{I_1, I_2, \ldots, I_N\}$ of $N = 1\,000$ images and a
+Given a database $\mathcal{D} = \{I_1, I_2, \ldots, I_N\}$ of $N = 1000$ images and a
 query image $I_q \in \mathcal{D}$, the goal is to return the $K$ most visually similar images
 from $\mathcal{D} \setminus \{I_q\}$ such that images from the same semantic category as
 $I_q$ rank as high as possible.
@@ -151,8 +151,9 @@ The retrieval system follows a six-stage pipeline:
           subsequent runs.
     \item \textbf{Query processing.} A query image's feature vector is computed on the fly
           using the same extractor.
-    \item \textbf{Similarity ranking.} Euclidean distance between the query vector and every
-          database vector is computed, and images are ranked in ascending order of distance.
+    \item \textbf{Similarity ranking.} A distance metric (Euclidean or cosine) between the
+          query vector and every database vector is computed, and images are ranked in
+          ascending order of distance.
     \item \textbf{Evaluation.} The top-$K$ returned images (excluding the query itself) are
           compared against the ground-truth class label of the query to compute Precision@$K$.
 \end{enumerate}
@@ -239,27 +240,43 @@ The four combined extractors and their dimensionalities are:
 
 \subsection{Similarity Measure}
 
-Retrieval is performed using the \textbf{Euclidean distance} between feature vectors:
+Two distance metrics are evaluated. \textbf{Euclidean distance} measures the straight-line
+distance between feature vectors:
 
 \begin{equation}
-    \delta(\mathbf{f}_q, \mathbf{f}_i) = \|\mathbf{f}_q - \mathbf{f}_i\|_2
+    \delta_{\text{euc}}(\mathbf{f}_q, \mathbf{f}_i)
+    = \|\mathbf{f}_q - \mathbf{f}_i\|_2
     = \sqrt{\sum_{k=1}^{d} (f_{q,k} - f_{i,k})^2}
 \end{equation}
 
-All database images are ranked by this distance in ascending order, and the query image
-itself (which achieves distance zero when it appears in the database) is excluded from the
-returned results before precision is computed.
+\textbf{Cosine distance} measures the angle between vectors, making it invariant to
+vector magnitude:
+
+\begin{equation}
+    \delta_{\text{cos}}(\mathbf{f}_q, \mathbf{f}_i)
+    = 1 - \frac{\mathbf{f}_q \cdot \mathbf{f}_i}{\|\mathbf{f}_q\|_2\,\|\mathbf{f}_i\|_2}
+\end{equation}
+
+It is worth noting that for unit-norm vectors the two metrics produce identical rankings,
+since $\delta_{\text{euc}}^2 = 2\,\delta_{\text{cos}}$ when
+$\|\mathbf{f}_q\|_2 = \|\mathbf{f}_i\|_2 = 1$. The color histogram vectors are
+$\ell^2$-normalized by construction, and the combined extractors normalize each component
+before concatenation, so the metric choice only meaningfully affects the two
+texture-only descriptors (LBP and GLCM) whose raw outputs are not unit-normalized.
+
+All database images are ranked by distance in ascending order, and the query image itself
+is excluded from the returned results before precision is computed.
 
 \subsection{Evaluation Protocol}
 
-Performance is measured using a \textbf{leave-one-out} protocol: each of the 1\,000 images
+Performance is measured using a \textbf{leave-one-out} protocol: each of the 1000 images
 in the Wang dataset is used as a query in turn. For each query, the top-$K$ retrieved images
 (with the query excluded) are compared against the query's ground-truth class label.
 
 Precision@$K$ is computed for $K \in \{1, 5, 10, 20\}$ and reported in two ways:
 
 \begin{itemize}[noitemsep]
-    \item \textbf{Global}: macro-average over all 1\,000 queries.
+    \item \textbf{Global}: macro-average over all 1000 queries.
     \item \textbf{Per-class}: macro-average over the 100 queries belonging to each class.
 \end{itemize}
 
@@ -269,11 +286,11 @@ Precision@$K$ is computed for $K \in \{1, 5, 10, 20\}$ and reported in two ways:
 \subsection{Global Precision@K}
 
 Table~\ref{tab:global} reports the global Precision@$K$ for all seven feature extractors,
-averaged over all 1\,000 queries. Several clear trends emerge.
+averaged over all 1000 queries. Several clear trends emerge.
 
 \begin{table}[h]
     \centering
-    \caption{Global Precision@$K$ averaged over all 1\,000 queries on the Wang dataset.
+    \caption{Global Precision@$K$ averaged over all 1000 queries on the Wang dataset.
              Best values in each column are \textbf{bold}.}
     \label{tab:global}
     \setlength{\tabcolsep}{8pt}
@@ -317,6 +334,18 @@ texture features help distinguish categories that share similar color distributi
 highest precision at every $K$ value. The gain is consistent but modest beyond K=10,
 suggesting that at larger retrieval depths the additional discriminability from texture
 descriptors is partially offset by harder-to-rank within-class variation.
+
+\textbf{Effect of distance metric.} Switching from Euclidean to cosine distance produces
+no change whatsoever for the color histogram or any combined extractor — a direct
+consequence of those vectors already being unit-normalized, making the two metrics
+algebraically equivalent in ranking order. The only extractors where the choice matters are
+the two texture-only descriptors: cosine distance gives LBP a small improvement
+(P@10: 0.4893 $\to$ 0.5113), while Euclidean distance is notably better for GLCM
+(P@10: 0.3339 vs 0.2856 under cosine). The GLCM result is expected — its raw feature
+values are unnormalized statistics with very different scales across dimensions, and
+Euclidean distance implicitly gives higher weight to larger-magnitude dimensions, which
+happens to be beneficial here. Overall, the distance metric has negligible practical impact
+on this system, and all reported results use Euclidean distance.
 
 \subsection{Per-Class Precision@10}
 
@@ -399,29 +428,31 @@ benchmarks \cite{babenko2014}. Replacing or augmenting the hand-crafted vectors 
 deep features extracted from a pre-trained backbone would likely yield large improvements
 particularly for visually ambiguous classes such as beaches and mountains.
 
-\textbf{Alternative distance metrics.} Only Euclidean distance is used in the current
-implementation. Exploring Chi-squared distance (well-suited to histograms), cosine similarity,
-or learned metric embeddings could improve retrieval precision without changing the feature
-representations.
+% \textbf{Alternative distance metrics.} Only Euclidean distance is used in the current
+% implementation. Exploring Chi-squared distance (well-suited to histograms), cosine similarity,
+% or learned metric embeddings could improve retrieval precision without changing the feature
+% representations.
 
 \textbf{Spatial pyramid features.} The current descriptors are computed globally over the
 entire image, discarding spatial structure. Spatial pyramid matching \cite{lazebnik2006}
 divides images into progressively finer grids and pools descriptors at each level, encoding
 spatial layout while retaining some degree of invariance.
 
-\textbf{Relevance feedback.} Interactive retrieval systems allow users to mark retrieved
-images as relevant or irrelevant. This feedback can be used to re-weight or shift the query
-vector towards the relevant image region in feature space, progressively improving results
-without retraining.
-
 \textbf{Approximate nearest neighbour search.} The current retrieval scans all $N$ feature
 vectors exhaustively, giving $O(Nd)$ query time. For large-scale databases, locality-sensitive
 hashing (LSH) or product quantization can reduce query time to near $O(\log N)$ with minimal
 precision loss.
 
-\textbf{Recall and mean Average Precision.} The current evaluation uses only Precision@$K$.
-Reporting mean Average Precision (mAP) and recall curves would give a more complete picture
-of the precision-recall trade-off across all retrieval depths.
+\textbf{Relevance feedback.} Interactive retrieval systems allow users to mark retrieved
+images as relevant or irrelevant. This feedback can be used to re-weight or shift the query
+vector towards the relevant image region in feature space, progressively improving results
+without retraining.
+
+
+
+% \textbf{Recall and mean Average Precision.} The current evaluation uses only Precision@$K$.
+% Reporting mean Average Precision (mAP) and recall curves would give a more complete picture
+% of the precision-recall trade-off across all retrieval depths.
 
 % ─── 6. References ──────────────────────────────────────────────────────────
 \section*{References}

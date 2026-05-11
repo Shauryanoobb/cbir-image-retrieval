@@ -3,6 +3,7 @@ Comprehensive Precision@K evaluation for all CBIR feature extractors.
 
 Runs every image as a query (leave-one-out), excludes the query image from
 retrieved results, then reports global and per-class Precision@K.
+Evaluates both Euclidean and Cosine distance metrics.
 
 Usage:
     python evaluate_all.py
@@ -32,6 +33,7 @@ from combined_feature_extraction import (
     extract_lbp_fast_glcm_features,
     extract_color_histogram_lbp_fast_glcm_features,
 )
+from similarity import euclidean_distance, cosine_distance
 from retrieval import build_feature_database, retrieve
 from save_and_load import save_feature_db, load_feature_db
 from evaluation import get_class
@@ -69,6 +71,11 @@ FAST_EXTRACTORS = [
 
 SLOW_EXTRACTORS = [extract_lbp]
 
+DISTANCE_METRICS = [
+    ("Euclidean", euclidean_distance),
+    ("Cosine",    cosine_distance),
+]
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -92,7 +99,7 @@ def precision_at_k_excl_query(results, query_image, k):
     return relevant / k
 
 
-def evaluate_extractor(extractor, feature_db, all_images):
+def evaluate_extractor(extractor, feature_db, all_images, distance_fn=euclidean_distance):
     """
     Query every image, compute Precision@K for each K in K_VALUES.
 
@@ -109,7 +116,7 @@ def evaluate_extractor(extractor, feature_db, all_images):
         query_path = os.path.join(DATASET_PATH, query_image)
         query_class = get_class(query_image)
         # +1 so we can drop the self-match and still have max_k results
-        results = retrieve(query_path, feature_db, extractor, top_k=max_k + 1)
+        results = retrieve(query_path, feature_db, extractor, top_k=max_k + 1, distance_fn=distance_fn)
         for k in K_VALUES:
             p = precision_at_k_excl_query(results, query_image, k)
             class_scores[query_class][k].append(p)
@@ -137,13 +144,13 @@ def _header_row(k_values):
     return "".join(f"{'P@'+str(k):>{COL}}" for k in sorted(k_values))
 
 
-def print_global_table(all_results):
+def print_global_table(all_results, title="GLOBAL PRECISION@K  (averaged over all 1000 queries)"):
     k_values = sorted(K_VALUES)
     name_w = max(len(n) for n in all_results) + 2
 
     sep = "=" * (name_w + COL * len(k_values))
     print(sep)
-    print("GLOBAL PRECISION@K  (averaged over all 1000 queries)")
+    print(title)
     print(sep)
     print(f"{'Extractor':<{name_w}}" + _header_row(k_values))
     print("-" * len(sep))
@@ -180,27 +187,29 @@ def print_class_table(extractor_name, class_precision):
 # ── CSV export ────────────────────────────────────────────────────────────────
 
 
-def save_csv(all_results, path):
+def save_csv(results_by_metric, path):
     k_values = sorted(K_VALUES)
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
 
-        w.writerow(["GLOBAL RESULTS"])
-        w.writerow(["Extractor"] + [f"P@{k}" for k in k_values])
-        for name, data in all_results.items():
-            w.writerow([name] + [f"{data['global'][k]:.4f}" for k in k_values])
+        for metric_name, all_results in results_by_metric.items():
+            w.writerow([f"=== {metric_name} Distance — GLOBAL RESULTS ==="])
+            w.writerow(["Extractor"] + [f"P@{k}" for k in k_values])
+            for name, data in all_results.items():
+                w.writerow([name] + [f"{data['global'][k]:.4f}" for k in k_values])
 
-        w.writerow([])
-        w.writerow(["PER-CLASS RESULTS"])
-        for name, data in all_results.items():
-            w.writerow([f"--- {name} ---"])
-            w.writerow(["Class"] + [f"P@{k}" for k in k_values])
-            for cls_id in sorted(data["class"]):
-                cls_name = CLASS_NAMES.get(cls_id, f"Class{cls_id}")
-                w.writerow(
-                    [cls_name]
-                    + [f"{data['class'][cls_id][k]:.4f}" for k in k_values]
-                )
+            w.writerow([])
+            w.writerow([f"=== {metric_name} Distance — PER-CLASS RESULTS ==="])
+            for name, data in all_results.items():
+                w.writerow([f"--- {name} ---"])
+                w.writerow(["Class"] + [f"P@{k}" for k in k_values])
+                for cls_id in sorted(data["class"]):
+                    cls_name = CLASS_NAMES.get(cls_id, f"Class{cls_id}")
+                    w.writerow(
+                        [cls_name]
+                        + [f"{data['class'][cls_id][k]:.4f}" for k in k_values]
+                    )
+                w.writerow([])
             w.writerow([])
 
 
@@ -226,40 +235,51 @@ def main():
     )
 
     n_classes = len(set(get_class(f) for f in all_images))
-    print(f"Dataset  : {len(all_images)} images, {n_classes} classes")
-    print(f"K values : {K_VALUES}")
+    print(f"Dataset   : {len(all_images)} images, {n_classes} classes")
+    print(f"K values  : {K_VALUES}")
     print(f"Extractors: {len(extractors)}")
+    print(f"Metrics   : {[m for m, _ in DISTANCE_METRICS]}")
     print()
 
-    all_results = {}
+    results_by_metric = {}
 
-    for extractor in extractors:
-        name = extractor.__name__
-        print(f"[{name}]")
-        t0 = time.time()
+    for metric_name, distance_fn in DISTANCE_METRICS:
+        print(f"\n{'━'*60}")
+        print(f"  DISTANCE METRIC: {metric_name}")
+        print(f"{'━'*60}\n")
 
-        feature_db = get_or_build_feature_db(extractor)
-        global_p, class_p = evaluate_extractor(extractor, feature_db, all_images)
+        all_results = {}
 
-        elapsed = time.time() - t0
-        summary = "  " + "  ".join(
-            f"P@{k}={global_p[k]:.4f}" for k in sorted(K_VALUES)
-        )
-        print(f"{summary}   ({elapsed:.1f}s)")
+        for extractor in extractors:
+            name = extractor.__name__
+            print(f"[{name}]")
+            t0 = time.time()
 
-        all_results[name] = {"global": global_p, "class": class_p}
+            feature_db = get_or_build_feature_db(extractor)
+            global_p, class_p = evaluate_extractor(
+                extractor, feature_db, all_images, distance_fn=distance_fn
+            )
 
-    print()
-    print_global_table(all_results)
+            elapsed = time.time() - t0
+            summary = "  " + "  ".join(
+                f"P@{k}={global_p[k]:.4f}" for k in sorted(K_VALUES)
+            )
+            print(f"{summary}   ({elapsed:.1f}s)")
 
-    print()
-    print("=" * 60)
-    print("PER-CLASS PRECISION@K")
-    print("=" * 60)
-    for name, data in all_results.items():
-        print_class_table(name, data["class"])
+            all_results[name] = {"global": global_p, "class": class_p}
 
-    save_csv(all_results, RESULTS_CSV)
+        print()
+        print_global_table(all_results, title=f"GLOBAL PRECISION@K — {metric_name} Distance")
+
+        print()
+        print(f"PER-CLASS PRECISION@K — {metric_name} Distance")
+        print("=" * 60)
+        for name, data in all_results.items():
+            print_class_table(name, data["class"])
+
+        results_by_metric[metric_name] = all_results
+
+    save_csv(results_by_metric, RESULTS_CSV)
     print(f"\nResults saved to {RESULTS_CSV}")
 
 
